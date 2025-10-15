@@ -1,0 +1,93 @@
+import pandas as pd
+import requests
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# --- KONFIGURASI ---
+API_KEY = "bfada2a7f9554156b8d135913252309"  
+INPUT_FILE = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap.xlsx"
+OUTPUT_FILE = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap_Hasil_Baru.xlsx"
+
+# --- BACA FILE EXCEL ---
+df = pd.read_excel(INPUT_FILE, header=None)
+
+# jika file hanya 1 kolom berisi ';', pecah jadi beberapa kolom
+if df.shape[1] == 1 and isinstance(df.iloc[0,0], str) and ';' in df.iloc[0,0]:
+    df = df[0].str.split(';', expand=True)
+    df.columns = df.iloc[0]  
+    df = df[1:]  
+    df.reset_index(drop=True, inplace=True)
+
+# normalisasi nama kolom agar aman
+df.columns = df.columns.str.strip()
+
+# pastikan ada kolom Kabupaten/Kota dan Kecamatan
+if 'Kabupaten/Kota' not in df.columns or 'Kecamatan' not in df.columns:
+    raise ValueError(f"Kolom 'Kabupaten/Kota' atau 'Kecamatan' tidak ditemukan. Kolom saat ini: {df.columns.tolist()}")
+
+# tambahkan kolom hasil bila belum ada
+hasil_cols = ['Last Update (time)', 'Suhu (°C)', 'Kelembapan (%)',
+              'Kondisi Cuaca', 'Kecepatan Angin (kph)', 'Arah Angin', 'Sinar UV']
+for c in hasil_cols:
+    if c not in df.columns:
+        df[c] = ""
+
+# --- FUNGSI AMBIL DATA CUACA ---
+def get_weather(kabupaten, kecamatan):
+    start_api = time.time()  # mulai timer API
+    try:
+        q = f"{kecamatan}, {kabupaten}, Papua, Indonesia"
+        url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={q}&aqi=no"
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            durasi = time.time() - start_api
+            print(f"Gagal ambil data {kecamatan} (status {r.status_code}) dalam {durasi:.2f}s")
+            return (None, None, None, None, None, None, None, durasi)
+
+        data = r.json()
+        last_update = data['current']['last_updated']
+        suhu = data['current']['temp_c']
+        kelembapan = data['current']['humidity']
+        kondisi = data['current']['condition']['text']
+        angin_kph = data['current']['wind_kph']
+        arah_angin = data['current']['wind_dir']
+        uv = data['current']['uv']
+        durasi = time.time() - start_api
+        print(f"Berhasil ambil data {kecamatan} dalam {durasi:.2f}s")
+        return (last_update, suhu, kelembapan, kondisi, angin_kph, arah_angin, uv, durasi)
+    except Exception as e:
+        durasi = time.time() - start_api
+        print(f"Gagal ambil data {kecamatan}: {e} dalam {durasi:.2f}s")
+        return (None, None, None, None, None, None, None, durasi)
+
+# --- AMBIL DATA DENGAN MULTITHREADING ---
+start_total = time.time()  # mulai timer total
+durasi_api_list = []
+
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = {}
+    for idx, row in df.iterrows():
+        kab = row['Kabupaten/Kota']
+        kec = row['Kecamatan']
+        futures[executor.submit(get_weather, kab, kec)] = idx
+
+    for future in as_completed(futures):
+        idx = futures[future]
+        hasil = future.result()
+        if hasil:
+            # pisahkan durasi dari hasil utama
+            *data_cuaca, durasi_api = hasil
+            for col, val in zip(hasil_cols, data_cuaca):
+                df.at[idx, col] = val
+            durasi_api_list.append(durasi_api)
+
+# --- SIMPAN KE FILE EXCEL HASIL ---
+df.to_excel(OUTPUT_FILE, index=False)
+total_time = time.time() - start_total
+
+print("\nSelesai! File hasil disimpan di:", OUTPUT_FILE)
+print(f"Total waktu eksekusi: {total_time:.2f} detik")
+
+if durasi_api_list:
+    rata2_api = sum(durasi_api_list) / len(durasi_api_list)
+    print(f"Rata-rata waktu ambil data API per lokasi: {rata2_api:.2f} detik")
