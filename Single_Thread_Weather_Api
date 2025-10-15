@@ -1,6 +1,6 @@
 import pandas as pd, requests, time
 
-API_KEY = "bfada2a7f9554156b8d135913252309"
+API_KEY = "ISI API KEY"
 INPUT_FILE  = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap.xlsx"
 OUTPUT_FILE = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap_Hasil_Single_Thread.xlsx"
 
@@ -33,4 +33,5 @@ for i, row in df.iterrows():
 print(f"Selesai dalam {time.time()-start:.2f} detik")
 
 df.to_excel(OUTPUT_FILE, index=False)
+
 print("File hasil:", OUTPUT_FILE)
