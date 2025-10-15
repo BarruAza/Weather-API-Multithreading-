@@ -1,0 +1,36 @@
+import pandas as pd, requests, time
+
+API_KEY = "bfada2a7f9554156b8d135913252309"
+INPUT_FILE  = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap.xlsx"
+OUTPUT_FILE = r"C:\Users\Barru\Documents\Universitas Brawijaya\SEMESTER 5\Komputasi Paralel\Code\Provinsi_Papua_Kecamatan_Lengkap_Hasil_Single_Thread.xlsx"
+
+# --- Baca Excel & rapikan ---
+df = pd.read_excel(INPUT_FILE, header=None)
+if df.shape[1] == 1 and isinstance(df.iloc[0,0], str) and ';' in df.iloc[0,0]:
+    df = df[0].str.split(';', expand=True); df.columns = df.iloc[0]; df = df[1:].reset_index(drop=True)
+df.columns = df.columns.str.strip()
+
+if not {'Kabupaten/Kota','Kecamatan'}.issubset(df.columns):
+    raise ValueError(f"Kolom wajib tidak ditemukan. Kolom saat ini: {df.columns.tolist()}")
+
+hasil_cols = ['Last Update (time)', 'Suhu (°C)', 'Kelembapan (%)','Kondisi Cuaca','Kecepatan Angin (kph)','Arah Angin','Sinar UV']
+for c in hasil_cols: 
+    if c not in df: df[c] = ""
+
+# --- Fungsi ambil data ---
+def get_weather(kab, kec):
+    try:
+        url = f"http://api.weatherapi.com/v1/current.json?key={API_KEY}&q={kec}, {kab}, Papua, Indonesia&aqi=no"
+        r = requests.get(url, timeout=10).json()['current']
+        return r['last_updated'], r['temp_c'], r['humidity'], r['condition']['text'], r['wind_kph'], r['wind_dir'], r['uv']
+    except: return (None,)*7
+
+# --- Loop ambil data single thread ---
+start = time.time()
+for i, row in df.iterrows():
+    print(f"[{i+1}/{len(df)}] {row['Kecamatan']}, {row['Kabupaten/Kota']}")
+    df.loc[i, hasil_cols] = get_weather(row['Kabupaten/Kota'], row['Kecamatan'])
+print(f"Selesai dalam {time.time()-start:.2f} detik")
+
+df.to_excel(OUTPUT_FILE, index=False)
+print("File hasil:", OUTPUT_FILE)
